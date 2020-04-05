@@ -53,8 +53,8 @@ export default Vue.extend({
   },
   mounted() {
     const canvas: HTMLCanvasElement = this.$refs["canvas"] as HTMLCanvasElement
-    canvas.height = 500
-    canvas.width = 500
+    canvas.height = 510
+    canvas.width = 510
     const c = canvas.getContext("2d")
     if (!c) {
       throw new Error("no context")
@@ -78,7 +78,7 @@ export default Vue.extend({
           direction: Direction.right,
           alive: true,
           body: [{
-            x: 5,
+            x: 4,
             y: Math.floor(canvas.width / size / 2),
           }],
           controls: {
@@ -93,7 +93,7 @@ export default Vue.extend({
           direction: Direction.left,
           alive: true,
           body: [{
-            x: (canvas.width / size) - 5,
+            x: Math.floor(canvas.width / size) - 5,
             y: Math.floor(canvas.height / size / 2),
           }],
           controls: {
@@ -181,9 +181,9 @@ export default Vue.extend({
 
       if (
         head.x < 0 ||
-        head.x > state.worldDemensions.width ||
+        head.x >= state.worldDemensions.width ||
         head.y < 0 ||
-        head.y > state.worldDemensions.height
+        head.y >= state.worldDemensions.height
       ) {
         player.alive = false
         return
