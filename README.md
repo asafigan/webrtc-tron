@@ -1,4 +1,4 @@
-# vue-snake
+# webrtc-tron
 
 ## Project setup
 ```
