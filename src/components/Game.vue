@@ -91,7 +91,6 @@ export default Vue.extend({
       }
 
       this.keyboardListener = (e: KeyboardEvent) => {
-        debugger
         if (state.ended) {
           if (e.key === " ") {
             state = startingState()
