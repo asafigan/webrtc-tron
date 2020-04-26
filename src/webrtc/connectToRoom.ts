@@ -87,11 +87,22 @@ export async function connectToRoom(roomName: string): Promise<session> {
         console.log('sent local description')
       }
 
-      dataChannelPromise = Promise.resolve(connection.createDataChannel('data'))
+      dataChannelPromise = new Promise((resolve) => {
+        const channel = connection.createDataChannel('data')
+        channel.onopen = () => {
+          if (channel.readyState === 'open') {
+            resolve(channel)
+          }
+        }
+      })
     } else {
       dataChannelPromise = new Promise(resolve => {
         connection.ondatachannel = (e) => {
-          resolve(e.channel)
+          e.channel.onopen = () => {
+            if (e.channel.readyState == 'open') {
+              resolve(e.channel)
+            }
+          }
         }
       })
     }

@@ -4,6 +4,8 @@
 
 <script lang="ts">
 import Vue from 'vue';
+import { connectToRoom, session, connection } from '../webrtc/connectToRoom'
+import { CombinedVueInstance } from 'vue/types/vue';
 
 enum Direction {
   up = -1,
@@ -29,9 +31,13 @@ interface Player {
     x: number;
     y: number;
   }[];
-  controls?: {
-    [key in string]?: Direction
-  };
+}
+
+const controls: {[key in string]?: Direction} = {
+  ArrowUp: Direction.up,
+  ArrowDown: Direction.down,
+  ArrowLeft: Direction.left,
+  ArrowRight: Direction.right,
 }
 
 const size = 10
@@ -43,15 +49,19 @@ export default Vue.extend({
     key: null | string;
     keyboardListener: null | ((e: KeyboardEvent) => void);
     requestFrame: null | number;
+    session: null | session;
+    direction: null | Direction;
   } {
     return {
       context: null,
       key: null,
       keyboardListener: null,
       requestFrame: null,
+      session: null,
+      direction: null
     }
   },
-  mounted() {
+  async mounted() {
     const canvas: HTMLCanvasElement = this.$refs["canvas"] as HTMLCanvasElement
     canvas.height = 510
     canvas.width = 510
@@ -67,66 +77,100 @@ export default Vue.extend({
     context.strokeStyle = "#fff"
     context.lineWidth = 10
 
-    const startingState = (): State => ({
-      worldDemensions: {
-        width: canvas.width / size,
-        height: canvas.height / size,
-      },
-      players: [
-        {
-          color: "#fcba03",
-          direction: Direction.right,
-          alive: true,
-          body: [{
-            x: 4,
-            y: Math.floor(canvas.width / size / 2),
-          }],
-          controls: {
-            ArrowUp: Direction.up,
-            ArrowDown: Direction.down,
-            ArrowLeft: Direction.left,
-            ArrowRight: Direction.right,
-          }
-        },
-        {
-          color: "#00d5ff",
-          direction: Direction.left,
-          alive: true,
-          body: [{
-            x: Math.floor(canvas.width / size) - 5,
-            y: Math.floor(canvas.height / size / 2),
-          }],
-          controls: {
-            w: Direction.up,
-            s: Direction.down,
-            a: Direction.left,
-            d: Direction.right,
-          }
-        },
-      ],
-      ended: false
-    })
+    this.session = await connectToRoom('room2')
+    if (this.session.isServer) {
+      const session = this.session
+      let state = startingState()
 
-    let state: State = startingState()
-
-    this.keyboardListener = (e: KeyboardEvent) => {
-      for (const player of state.players) {
-        const direction = player.controls?.[e.key];
-        if (direction && direction !== -player.direction) {
-          player.direction = direction
+      session.client.onmessage = (e) => {
+        const direction = parseInt(JSON.parse(e.data))
+        const otherPlayer = state.players[1]
+        if (direction !== -otherPlayer.direction) {
+          otherPlayer.direction = direction
         }
       }
 
-      if (state.ended) {
-        if (e.key === " ") {
-          state = startingState()
+      this.keyboardListener = (e: KeyboardEvent) => {
+        debugger
+        if (state.ended) {
+          if (e.key === " ") {
+            state = startingState()
+          }
         }
+        const direction = controls[e.key];
+        const thisPlayer = state.players[0]
+        if (direction && direction !== -thisPlayer.direction) {
+            thisPlayer.direction = direction
+        }
+      }
+
+      const gameLoop = () => {
+        updateState(state)
+        session.client.send(JSON.stringify(state))
+        render(state, context)
+        this.requestFrame = requestAnimationFrame(gameLoop)
+      }
+
+      gameLoop()
+    } else {
+      const session = this.session
+      this.keyboardListener = (e: KeyboardEvent) => {
+        // for (const player of state.players) {
+        //   const direction = player.controls?.[e.key];
+        //   if (direction && direction !== -player.direction) {
+        //     player.direction = direction
+        //   }
+        // }
+
+        // if (state.ended) {
+        //   if (e.key === " ") {
+        //     state = startingState()
+        //   }
+        // }
+        const direction = controls[e.key];
+        if (direction) {
+          session.server.send(direction.toString())
+        }
+      }
+      this.session.server.onmessage = (e) => {
+        const parsedState = JSON.parse(e.data)
+        render(parsedState, context)
+      }
+    }
+
+    function startingState(): State {
+      return {
+        worldDemensions: {
+          width: canvas.width / size,
+          height: canvas.height / size,
+        },
+        players: [
+          {
+            color: "#fcba03",
+            direction: Direction.right,
+            alive: true,
+            body: [{
+              x: 4,
+              y: Math.floor(canvas.width / size / 2),
+            }]
+          },
+          {
+            color: "#00d5ff",
+            direction: Direction.left,
+            alive: true,
+            body: [{
+              x: Math.floor(canvas.width / size) - 5,
+              y: Math.floor(canvas.height / size / 2),
+            }]
+          },
+        ],
+        ended: false
       }
     }
 
     window.addEventListener('keydown', this.keyboardListener)
 
-    function render(state: State) {
+    function render(state: State, context: CanvasRenderingContext2D) {
       context.fillStyle = "#000"
       context.fillRect(0, 0, context.canvas.width, context.canvas.height)
       for (const player of state.players) {
@@ -151,7 +195,7 @@ export default Vue.extend({
       }
     }
 
-    const movePlayer = (player: Player) => {
+    function movePlayer(player: Player) {
       const head = player.body[0]
       if (player.direction === Direction.down) {
         player.body.unshift({
@@ -176,7 +220,7 @@ export default Vue.extend({
       }
     }
 
-    const collidePlayer = (player: Player, state: State) => {
+    function collidePlayer(player: Player, state: State) {
       const head = player.body[0]
 
       if (
@@ -205,7 +249,7 @@ export default Vue.extend({
       }
     }
 
-    const updateState = (state: State) => {
+    function updateState(state: State) {
       if (!state.ended) {
         for (const player of state.players) {
           movePlayer(player)
@@ -220,14 +264,6 @@ export default Vue.extend({
         }
       }
     }
-
-    const gameLoop = () => {
-      updateState(state)
-      render(state)
-      this.requestFrame = requestAnimationFrame(gameLoop)
-    }
-
-    gameLoop()
   },
   beforeDestroy() {
     if (this.requestFrame) {
